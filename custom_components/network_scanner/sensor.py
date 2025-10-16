@@ -104,7 +104,7 @@ class NetworkScanner(Entity):
         """
         # Fast discovery: no DNS (-n), TCP SYN pings on common ports, aggressive timing
         # Adjust --min-rate to taste; keep it conservative for NAS CPUs
-        args = '-sn -n -T4 --min-rate 800'
+        args = '-sn -n -T4'
         try:
             self.nm.scan(hosts=self.ip_range, arguments=args)
         except Exception as e:
