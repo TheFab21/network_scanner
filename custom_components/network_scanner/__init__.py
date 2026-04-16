@@ -44,8 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
     mac_mappings = "\n".join(mac_mappings_list)
 
-    # Build the blocking scanner client (nmap lives in executor only)
-    client = NetworkScannerClient(ip_range, mac_mappings)
+    # Build the blocking scanner client in the executor — its constructor
+    # calls `nmap --version` synchronously, which must not run on the event loop.
+    client = await hass.async_add_executor_job(
+        NetworkScannerClient, ip_range, mac_mappings
+    )
 
     async def _async_update_data():
         """Run the blocking nmap scan off the event loop."""
@@ -62,17 +65,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         update_method=_async_update_data,
     )
 
-    # Kick off the first refresh in the background so setup doesn't block on it.
-    # The sensor will show "unknown" until the first scan finishes, which is fine.
-    config_entry.async_create_background_task(
-        hass,
+    # IMPORTANT: do NOT await the first refresh here, and do NOT attach the
+    # background task to the config entry. Either of those will make HA
+    # consider setup as still running until the scan finishes, which triggers
+    # "Setup of sensor platform network_scanner is taking over 10 seconds".
+    # We fire-and-forget on hass instead, so setup returns immediately.
+    hass.data[DOMAIN][config_entry.entry_id] = coordinator
+
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+
+    hass.async_create_background_task(
         coordinator.async_refresh(),
         name=f"{DOMAIN}_initial_refresh",
     )
 
-    hass.data[DOMAIN][config_entry.entry_id] = coordinator
-
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     return True
 
 
